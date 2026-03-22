@@ -3,17 +3,19 @@ import { Send, Sparkles, Bookmark } from "lucide-react";
 import type { Ingredient } from "@/pages/MainPage";
 
 // 채팅 메시지 하나를 표현하는 타입
+// title은 AI 응답일 때만 존재 (BE에서 JSON으로 파싱한 레시피 제목)
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  title?: string;
 }
 
 // MainPage로부터 현재 재료 목록과 저장 상태를 props로 받아 사용
 interface Props {
   ingredients: Ingredient[];
   savedMessageIds: Set<string>;
-  onToggleSave: (id: string, content: string) => void;
+  onToggleSave: (id: string, title: string, content: string) => void;
 }
 
 // 채팅 패널: 사용자와 레시피 봇 간의 대화 UI 및 메시지 상태 관리
@@ -41,12 +43,15 @@ const ChatPanel = ({ ingredients, savedMessageIds, onToggleSave }: Props) => {
       content: input,
     };
 
-    // TODO: 실제 LLM API(예: OpenAI) 호출로 대체 필요
+    // TODO: 실제 OpenAI API 호출로 대체 필요
+    // BE에서 { title, content } JSON으로 응답이 오면 아래와 동일한 방식으로 파싱
     const ingredientList = ingredients.map((i) => i.name).join(", ");
+    const { title, content } = generateMockRecipe(input, ingredientList);
     const mockResponse: Message = {
       id: (Date.now() + 1).toString(),
       role: "assistant",
-      content: generateMockRecipe(input, ingredientList),
+      title,
+      content,
     };
 
     setMessages((prev) => [...prev, userMsg, mockResponse]);
@@ -61,10 +66,12 @@ const ChatPanel = ({ ingredients, savedMessageIds, onToggleSave }: Props) => {
       role: "user",
       content: `냉장고에 ${ingredientList}이(가) 있어요. 뭐 해먹을 수 있을까요?`,
     };
+    const { title, content } = generateMockRecipe("추천", ingredientList);
     const mockResponse: Message = {
       id: (Date.now() + 1).toString(),
       role: "assistant",
-      content: generateMockRecipe("추천", ingredientList),
+      title,
+      content,
     };
     setMessages((prev) => [...prev, userMsg, mockResponse]);
   };
@@ -108,7 +115,7 @@ const ChatPanel = ({ ingredients, savedMessageIds, onToggleSave }: Props) => {
             {/* AI 메시지에만 저장 버튼 표시: 호버 시 또는 이미 저장된 경우 보임 */}
             {msg.role === "assistant" && (
               <button
-                onClick={() => onToggleSave(msg.id, msg.content)}
+                onClick={() => onToggleSave(msg.id, msg.title ?? "", msg.content)}
                 title={savedMessageIds.has(msg.id) ? "저장 취소" : "저장하기"}
                 className={`btn-press mb-1 flex-shrink-0 rounded-lg p-1.5 transition-all duration-150 lg:p-2 ${
                   hoveredId === msg.id || savedMessageIds.has(msg.id)
@@ -154,13 +161,22 @@ const ChatPanel = ({ ingredients, savedMessageIds, onToggleSave }: Props) => {
   );
 };
 
-// Mock 레시피 응답 생성 함수: 실제 LLM 연동 전 임시 사용
-// query와 ingredients를 받지만 현재는 랜덤으로 하나를 반환
-function generateMockRecipe(query: string, ingredients: string): string {
+// Mock 레시피 응답 생성 함수: 실제 OpenAI API 연동 전 임시 사용
+// 실제 연동 시 BE가 { title, content } JSON을 반환하면 이 함수와 동일한 구조로 사용
+function generateMockRecipe(query: string, ingredients: string): { title: string; content: string } {
   const recipes = [
-    `📋 **계란볶음밥** 추천드려요!\n\n🥘 재료: ${ingredients}\n\n1. 밥을 준비하고 계란을 풀어주세요\n2. 양파, 당근을 잘게 썰어주세요\n3. 팬에 기름을 두르고 야채를 볶아주세요\n4. 밥을 넣고 함께 볶다가 계란을 넣어주세요\n5. 소금, 후추로 간을 맞추면 완성!\n\n⏱️ 조리시간: 약 15분`,
-    `📋 **야채 오믈렛** 어떨까요?\n\n🥘 재료: ${ingredients}\n\n1. 계란 3개를 잘 풀어주세요\n2. 양파, 당근을 잘게 다져주세요\n3. 우유 2큰술을 계란물에 넣어주세요\n4. 팬에 버터를 두르고 야채를 볶아주세요\n5. 계란물을 부어 천천히 익혀주세요\n\n⏱️ 조리시간: 약 10분`,
-    `📋 **당근 계란전** 만들어보세요!\n\n🥘 재료: ${ingredients}\n\n1. 당근을 채 썰어주세요\n2. 계란 2개에 당근, 소금을 넣고 섞어주세요\n3. 팬에 기름을 두르고 한 국자씩 부어주세요\n4. 앞뒤로 노릇하게 구워주면 완성!\n\n⏱️ 조리시간: 약 10분`,
+    {
+      title: "계란볶음밥",
+      content: `🥘 재료: ${ingredients}\n\n1. 밥을 준비하고 계란을 풀어주세요\n2. 양파, 당근을 잘게 썰어주세요\n3. 팬에 기름을 두르고 야채를 볶아주세요\n4. 밥을 넣고 함께 볶다가 계란을 넣어주세요\n5. 소금, 후추로 간을 맞추면 완성!\n\n⏱️ 조리시간: 약 15분`,
+    },
+    {
+      title: "야채 오믈렛",
+      content: `🥘 재료: ${ingredients}\n\n1. 계란 3개를 잘 풀어주세요\n2. 양파, 당근을 잘게 다져주세요\n3. 우유 2큰술을 계란물에 넣어주세요\n4. 팬에 버터를 두르고 야채를 볶아주세요\n5. 계란물을 부어 천천히 익혀주세요\n\n⏱️ 조리시간: 약 10분`,
+    },
+    {
+      title: "당근 계란전",
+      content: `🥘 재료: ${ingredients}\n\n1. 당근을 채 썰어주세요\n2. 계란 2개에 당근, 소금을 넣고 섞어주세요\n3. 팬에 기름을 두르고 한 국자씩 부어주세요\n4. 앞뒤로 노릇하게 구워주면 완성!\n\n⏱️ 조리시간: 약 10분`,
+    },
   ];
   return recipes[Math.floor(Math.random() * recipes.length)];
 }

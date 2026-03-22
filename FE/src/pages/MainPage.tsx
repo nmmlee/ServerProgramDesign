@@ -15,6 +15,7 @@ export interface Ingredient {
 // 저장된 AI 레시피 메시지 구조
 export interface SavedMessage {
   id: string;
+  title: string;
   content: string;
   savedAt: string; // ISO string
 }
@@ -32,12 +33,22 @@ const MainPage = () => {
   // 저장된 레시피 메시지 목록
   const [savedMessages, setSavedMessages] = useState<SavedMessage[]>([]);
 
-  const handleToggleSave = (id: string, content: string) => {
+  const handleToggleSave = (id: string, title: string, content: string) => {
     setSavedMessages((prev) => {
       const exists = prev.find((m) => m.id === id);
       if (exists) return prev.filter((m) => m.id !== id);
-      return [...prev, { id, content, savedAt: new Date().toISOString() }];
+      return [...prev, { id, title, content, savedAt: new Date().toISOString() }];
     });
+  };
+
+  const handleRemoveSavedMessage = (id: string) => {
+    setSavedMessages((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const handleEditSavedMessage = (id: string, title: string, content: string) => {
+    setSavedMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, title, content } : m))
+    );
   };
 
   const savedMessageIds = new Set(savedMessages.map((m) => m.id));
@@ -120,6 +131,8 @@ const MainPage = () => {
               onAdd={addIngredient}
               onRemove={removeIngredient}
               savedMessages={savedMessages}
+              onRemoveSavedMessage={handleRemoveSavedMessage}
+              onEditSavedMessage={handleEditSavedMessage}
             />
           </div>
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2, Search, ChevronDown, ChevronUp, Refrigerator, BookMarked } from "lucide-react";
+import { Plus, Trash2, Search, ChevronDown, ChevronUp, Refrigerator, BookMarked, Pencil, Check, X } from "lucide-react";
 import type { Ingredient, SavedMessage } from "@/pages/MainPage";
 
 type Tab = "fridge" | "recipes";
@@ -10,13 +10,9 @@ interface Props {
   onAdd: (ingredient: Omit<Ingredient, "id">) => void;
   onRemove: (id: string) => void;
   savedMessages: SavedMessage[];
+  onRemoveSavedMessage: (id: string) => void;
+  onEditSavedMessage: (id: string, title: string, content: string) => void;
 }
-
-// 레시피 내용에서 볼드 처리된 요리명을 추출 (예: "📋 **계란볶음밥** 추천드려요!")
-const extractTitle = (content: string): string => {
-  const match = content.match(/\*\*(.+?)\*\*/);
-  return match ? match[1] : content.slice(0, 20) + "…";
-};
 
 // ISO 날짜 문자열을 한국어 날짜 형식으로 변환
 const toKoreanDate = (iso: string): string =>
@@ -48,7 +44,7 @@ const getExpiryStyle = (days: number) => {
 };
 
 // 재료 관리 패널: 냉장고 재료 추가·삭제 + 저장된 레시피 탭
-const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages }: Props) => {
+const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages, onRemoveSavedMessage, onEditSavedMessage }: Props) => {
   const [activeTab, setActiveTab] = useState<Tab>("fridge");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -56,6 +52,26 @@ const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages }: Props)
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+
+  const startEdit = (msg: SavedMessage) => {
+    setEditingId(msg.id);
+    setEditTitle(msg.title);
+    setEditContent(msg.content);
+    setExpandedId(msg.id);
+  };
+
+  const saveEdit = (id: string) => {
+    if (!editTitle.trim()) return;
+    onEditSavedMessage(id, editTitle.trim(), editContent);
+    setEditingId(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
 
   // 입력값 유효성 검사 후 onAdd 콜백 호출, 성공 시 폼 초기화
   const handleAdd = (e: React.FormEvent) => {
@@ -70,8 +86,9 @@ const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages }: Props)
     setExpiry("");
   };
 
-  // 검색어로 필터링 후 날짜별로 내림차순 그룹화
+  // 검색어로 필터링 후 날짜별로 내림차순 그룹화 (title과 content 모두 검색)
   const filteredMessages = savedMessages.filter((m) =>
+    m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     m.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
   const groupedByDate = filteredMessages.reduce<Record<string, SavedMessage[]>>(
@@ -235,34 +252,84 @@ const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages }: Props)
                 <div className="space-y-2">
                   {groupedByDate[date].map((msg) => {
                     const isExpanded = expandedId === msg.id;
+                    const isEditing = editingId === msg.id;
                     return (
                       <div
                         key={msg.id}
                         className="rounded-2xl border border-border bg-card shadow-sm"
                       >
-                        {/* 카드 헤더: 요리명 + 저장 시간 + 펼치기 버튼 */}
-                        <button
-                          onClick={() => setExpandedId(isExpanded ? null : msg.id)}
-                          className="flex w-full items-center gap-2 px-3 py-3 text-left lg:px-4 lg:py-3.5"
-                        >
-                          <span className="flex-1 truncate text-sm font-semibold text-foreground lg:text-base">
-                            {extractTitle(msg.content)}
-                          </span>
-                          <span className="shrink-0 font-number text-xs text-muted-foreground lg:text-sm">
-                            {toTime(msg.savedAt)}
-                          </span>
-                          {isExpanded
-                            ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground lg:h-5 lg:w-5" />
-                            : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground lg:h-5 lg:w-5" />
-                          }
-                        </button>
+                        {/* 카드 헤더: 펼치기 영역 + 수정·삭제 버튼 */}
+                        <div className="flex items-center gap-1 px-3 py-3 lg:px-4 lg:py-3.5">
+                          <button
+                            onClick={() => !isEditing && setExpandedId(isExpanded ? null : msg.id)}
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          >
+                            <span className="flex-1 truncate text-sm font-semibold text-foreground lg:text-base">
+                              {msg.title}
+                            </span>
+                            <span className="shrink-0 font-number text-xs text-muted-foreground lg:text-sm">
+                              {toTime(msg.savedAt)}
+                            </span>
+                            {isExpanded
+                              ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground lg:h-5 lg:w-5" />
+                              : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground lg:h-5 lg:w-5" />
+                            }
+                          </button>
+                          <button
+                            onClick={() => startEdit(msg)}
+                            title="수정"
+                            className="btn-press rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary lg:p-2"
+                          >
+                            <Pencil className="h-4 w-4 lg:h-4 lg:w-4" />
+                          </button>
+                          <button
+                            onClick={() => onRemoveSavedMessage(msg.id)}
+                            title="삭제"
+                            className="btn-press rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive lg:p-2"
+                          >
+                            <Trash2 className="h-4 w-4 lg:h-4 lg:w-4" />
+                          </button>
+                        </div>
 
-                        {/* 펼쳐진 상태에서 레시피 전체 내용 표시 */}
+                        {/* 펼쳐진 상태: 편집 모드 또는 내용 표시 */}
                         {isExpanded && (
                           <div className="border-t border-border px-3 py-3 lg:px-4 lg:py-4">
-                            <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground lg:text-sm">
-                              {msg.content}
-                            </p>
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <input
+                                  value={editTitle}
+                                  onChange={(e) => setEditTitle(e.target.value)}
+                                  placeholder="레시피 이름"
+                                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                />
+                                <textarea
+                                  value={editContent}
+                                  onChange={(e) => setEditContent(e.target.value)}
+                                  rows={6}
+                                  className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-sm"
+                                />
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    onClick={cancelEdit}
+                                    className="btn-press flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                    취소
+                                  </button>
+                                  <button
+                                    onClick={() => saveEdit(msg.id)}
+                                    className="btn-press flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                    저장
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground lg:text-sm">
+                                {msg.content}
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
