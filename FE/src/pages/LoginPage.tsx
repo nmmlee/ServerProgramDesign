@@ -1,16 +1,42 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import cookingHero from "@/assets/cooking-hero.png";
+import { AUTH_TOKEN_STORAGE_KEY } from "@/lib/ingredientsApi";
 
 // 로그인 페이지: 앱 진입점 화면으로, 이메일·비밀번호 입력 후 메인으로 이동
 const LoginPage = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: 실제 인증 API 연동 필요 (현재는 바로 메인 페이지로 이동)
+    setError("");
+
+    // 입력 받은 email의 공백 제거 및 소문자 변환
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password) {
+      setError("이메일과 비밀번호를 입력해주세요.");
+      return;
+    }
+
+    // [BE 통신] - Login API 호출
+    const res = await fetch("/api/users/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normalizedEmail, password }),
+    });
+    const data: { message?: string; token?: string } = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.message ?? "로그인에 실패했습니다.");
+      return;
+    }
+    if (!data.token) {
+      setError("서버 응답에 토큰이 없습니다.");
+      return;
+    }
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.token);
     navigate("/main");
   };
 
@@ -47,6 +73,10 @@ const LoginPage = () => {
               className="h-12 w-full rounded-xl border border-input bg-card px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
+
+          {error && (
+            <p className="text-center text-sm font-medium text-destructive">{error}</p>
+          )}
 
           {/* btn-press: index.css에 정의된 탭 시 살짝 축소되는 인터랙션 클래스 */}
           <button
