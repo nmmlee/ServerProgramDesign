@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import IngredientPanel from '@/components/IngredientPanel';
 import ChatPanel from '@/components/ChatPanel';
+import { AUTH_TOKEN_STORAGE_KEY, getUserId } from '@/lib/ingredientsApi';
 import { LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -76,25 +77,42 @@ const MainPage = () => {
         return () => clearInterval(interval);
     }, []);
 
+    // 사용자 Id가 없으면 로그인 페이지로 이동(Token이 없는 경우 메인페이지 접근 불가)
     useEffect(() => {
+        const userId = getUserId();
+        if (!userId) {
+            navigate('/', { replace: true });
+            return;
+        }
+
+        // [BE 통신] - Ingredients Get API 호출
         const fetchIngredients = async () => {
-            const res = await fetch('/ingredients?userId=123');
+            const res = await fetch(
+                `/api/ingredients?userId=${encodeURIComponent(userId)}`,
+            );
             const data = await res.json();
             setIngredients(data);
         };
 
         fetchIngredients();
-    }, []);
+    }, [navigate]);
 
+    // [BE 통신] - Ingredients Add API 호출
     const addIngredient = async (ingredient: Omit<Ingredient, 'id'>) => {
-        const res = await fetch('/ingredients', {
+        const userId = getUserId();
+        if (!userId) {
+            navigate('/', { replace: true });
+            return;
+        }
+
+        const res = await fetch('/api/ingredients', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 ...ingredient,
-                userId: '123',
+                userId,
             }),
         });
 
@@ -102,8 +120,34 @@ const MainPage = () => {
         setIngredients((prev) => [...prev, data]);
     };
 
+    const updateIngredient = async (
+        id: string,
+        updates: Omit<Ingredient, 'id'>,
+    ) => {
+        const res = await fetch(`/api/ingredients/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        setIngredients((prev) =>
+            prev.map((i) =>
+                i.id === id
+                    ? {
+                          ...i,
+                          name: data.name,
+                          quantity: Number(data.quantity),
+                          expiry: data.expiry,
+                      }
+                    : i,
+            ),
+        );
+    };
+
+    // [BE 통신] - Ingredients Delete API 호출
     const removeIngredient = async (id: string) => {
-        await fetch(`/ingredients/${id}`, {
+        await fetch(`/api/ingredients/${id}`, {
             method: 'DELETE',
         });
 
@@ -161,7 +205,10 @@ const MainPage = () => {
 
                 {/* 로그아웃: 모바일에서는 아이콘만 표시 */}
                 <button
-                    onClick={() => navigate('/')}
+                    onClick={() => {
+                        localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+                        navigate('/');
+                    }}
                     className="btn-press flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted lg:gap-1.5 lg:px-4 lg:py-2 lg:text-base"
                 >
                     <LogOut className="h-4 w-4 lg:h-5 lg:w-5" />
@@ -177,6 +224,7 @@ const MainPage = () => {
                         <IngredientPanel
                             ingredients={ingredients}
                             onAdd={addIngredient}
+                            onUpdate={updateIngredient}
                             onRemove={removeIngredient}
                             savedMessages={savedMessages}
                             onRemoveSavedMessage={handleRemoveSavedMessage}
