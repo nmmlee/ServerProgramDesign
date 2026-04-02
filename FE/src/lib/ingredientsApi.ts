@@ -38,6 +38,7 @@ export function getUserId(): string | null {
   return String(uid);
 }
 
+// 서버에서 넘어온 값을 받아주고, Ingredient 타입으로 변환
 function normalizeIngredient(raw: {
   id: unknown;
   name: string;
@@ -52,6 +53,7 @@ function normalizeIngredient(raw: {
   };
 }
 
+// Get API 호출, 초기에 사용자 재료 목록 전부 조회
 export async function fetchIngredients(userId: string): Promise<Ingredient[]> {
   const res = await fetch(
     `${prefix}/ingredients?userId=${encodeURIComponent(userId)}`,
@@ -62,6 +64,7 @@ export async function fetchIngredients(userId: string): Promise<Ingredient[]> {
   return data.map((item) => normalizeIngredient(item as Ingredient));
 }
 
+// Create API 호출
 export async function createIngredient(body: {
   name: string;
   quantity: number;
@@ -78,6 +81,22 @@ export async function createIngredient(body: {
   return normalizeIngredient(data);
 }
 
+// Update API 호출
+export async function updateIngredient(
+  id: string,
+  body: Omit<Ingredient, "id">,
+): Promise<Ingredient> {
+  const res = await fetch(`${prefix}/ingredients/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return normalizeIngredient(data);
+}
+
+// Delete API 호출
 export async function deleteIngredient(id: string): Promise<void> {
   const res = await fetch(`${prefix}/ingredients/${encodeURIComponent(id)}`, {
     method: "DELETE",
