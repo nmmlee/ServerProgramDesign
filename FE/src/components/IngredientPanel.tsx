@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2, Search, ChevronDown, ChevronUp, Refrigerator, BookMarked, Pencil, Check, X } from "lucide-react";
-import type { Ingredient, SavedMessage } from "@/pages/MainPage";
+import type { Ingredient } from "@/lib/ingredientsApi";
+import type { SavedMessage } from "@/pages/MainPage";
 
 type Tab = "fridge" | "recipes";
 
@@ -8,6 +9,7 @@ type Tab = "fridge" | "recipes";
 interface Props {
   ingredients: Ingredient[];
   onAdd: (ingredient: Omit<Ingredient, "id">) => void;
+  onUpdate: (id: string, ingredient: Omit<Ingredient, "id">) => void | Promise<void>;
   onRemove: (id: string) => void;
   savedMessages: SavedMessage[];
   onRemoveSavedMessage: (id: string) => void;
@@ -43,8 +45,16 @@ const getExpiryStyle = (days: number) => {
   return "bg-muted text-muted-foreground";
 };
 
+/** 소비기한 값을 <input type="date">용 YYYY-MM-DD로 맞춤 */
+const toDateInputValue = (expiry: string): string => {
+  if (/^\d{4}-\d{2}-\d{2}/.test(expiry)) return expiry.slice(0, 10);
+  const d = new Date(expiry);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return expiry.slice(0, 10);
+};
+
 // 재료 관리 패널: 냉장고 재료 추가·삭제 + 저장된 레시피 탭
-const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages, onRemoveSavedMessage, onEditSavedMessage }: Props) => {
+const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages, onRemoveSavedMessage, onEditSavedMessage }: Props) => {
   const [activeTab, setActiveTab] = useState<Tab>("fridge");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -55,6 +65,51 @@ const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages, onRemove
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
+
+  const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
+  const [ingredientEditName, setIngredientEditName] = useState("");
+  const [ingredientEditQuantity, setIngredientEditQuantity] = useState("");
+  const [ingredientEditExpiry, setIngredientEditExpiry] = useState("");
+  const [ingredientEditError, setIngredientEditError] = useState("");
+
+  const startIngredientEdit = (item: Ingredient) => {
+    setIngredientEditError("");
+    setEditingIngredientId(item.id);
+    setIngredientEditName(item.name);
+    setIngredientEditQuantity(String(item.quantity));
+    setIngredientEditExpiry(toDateInputValue(item.expiry));
+  };
+
+  const cancelIngredientEdit = () => {
+    setEditingIngredientId(null);
+    setIngredientEditError("");
+  };
+
+  const saveIngredientEdit = async (id: string) => {
+    setIngredientEditError("");
+    if (!ingredientEditName.trim()) {
+      setIngredientEditError("재료명을 입력해주세요.");
+      return;
+    }
+    if (!ingredientEditQuantity || parseInt(ingredientEditQuantity, 10) <= 0) {
+      setIngredientEditError("개수를 올바르게 입력해주세요.");
+      return;
+    }
+    if (!ingredientEditExpiry) {
+      setIngredientEditError("소비기한을 선택해주세요.");
+      return;
+    }
+    try {
+      await onUpdate(id, {
+        name: ingredientEditName.trim(),
+        quantity: parseInt(ingredientEditQuantity, 10),
+        expiry: ingredientEditExpiry,
+      });
+      setEditingIngredientId(null);
+    } catch {
+      setIngredientEditError("저장에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
 
   const startEdit = (msg: SavedMessage) => {
     setEditingId(msg.id);
@@ -186,26 +241,90 @@ const IngredientPanel = ({ ingredients, onAdd, onRemove, savedMessages, onRemove
             )}
             {ingredients.map((item) => {
               const days = getDaysUntilExpiry(item.expiry);
+              const isEditingIngredient = editingIngredientId === item.id;
+
+              if (isEditingIngredient) {
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-primary/30 bg-card p-3 shadow-sm lg:p-4"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                      <input
+                        value={ingredientEditName}
+                        onChange={(e) => setIngredientEditName(e.target.value)}
+                        placeholder="재료명"
+                        className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-base"
+                      />
+                      <input
+                        value={ingredientEditQuantity}
+                        onChange={(e) => setIngredientEditQuantity(e.target.value)}
+                        type="number"
+                        min={1}
+                        placeholder="개수"
+                        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-center font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:w-24 lg:text-base"
+                      />
+                      <input
+                        value={ingredientEditExpiry}
+                        onChange={(e) => setIngredientEditExpiry(e.target.value)}
+                        type="date"
+                        className="h-11 rounded-xl border border-input bg-background px-3 font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-base"
+                      />
+                    </div>
+                    {ingredientEditError && (
+                      <p className="mt-2 text-xs font-medium text-destructive lg:text-sm">{ingredientEditError}</p>
+                    )}
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={cancelIngredientEdit}
+                        className="btn-press flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted lg:text-sm"
+                      >
+                        <X className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => saveIngredientEdit(item.id)}
+                        className="btn-press flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 lg:text-sm"
+                      >
+                        <Check className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+                        저장
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={item.id}
                   className="flex items-center gap-2 rounded-2xl bg-card p-3 shadow-sm lg:gap-3 lg:p-4"
                 >
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <span className="text-sm font-semibold text-foreground lg:text-base">{item.name}</span>
                   </div>
-                  <span className="font-number text-sm font-bold text-foreground lg:text-base">
+                  <span className="shrink-0 font-number text-sm font-bold text-foreground lg:text-base">
                     {item.quantity}개
                   </span>
-                  {/* D-day 뱃지: 고정 너비로 텍스트 길이가 바뀌어도 레이아웃에 영향 없음 */}
                   <span
                     className={`w-14 shrink-0 rounded-full py-0.5 text-center font-number text-xs font-semibold lg:w-16 lg:text-sm ${getExpiryStyle(days)}`}
                   >
                     {days <= 0 ? "만료됨" : `D-${days}`}
                   </span>
                   <button
+                    type="button"
+                    title="편집"
+                    onClick={() => startIngredientEdit(item)}
+                    className="btn-press shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary lg:p-2"
+                  >
+                    <Pencil className="h-4 w-4 lg:h-5 lg:w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="삭제"
                     onClick={() => onRemove(item.id)}
-                    className="btn-press rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive lg:p-2"
+                    className="btn-press shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive lg:p-2"
                   >
                     <Trash2 className="h-4 w-4 lg:h-5 lg:w-5" />
                   </button>
