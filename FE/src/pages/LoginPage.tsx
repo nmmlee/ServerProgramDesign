@@ -27,16 +27,27 @@ const LoginPage = () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: normalizedEmail, password }),
     });
-    const data: { message?: string; token?: string } = await res.json().catch(() => ({}));
+
+// data 타입에 userId를 추가했습니다.
+    const data: { message?: string; token?: string; userId?: string } = await res.json().catch(() => ({}));
+    
     if (!res.ok) {
       setError(data.message ?? "로그인에 실패했습니다.");
       return;
     }
+    
     if (!data.token) {
       setError("서버 응답에 토큰이 없습니다.");
       return;
     }
+
+    // 기존 토큰 저장 로직
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.token);
+    
+    // [추가된 코드] userId를 로컬 스토리지에 저장합니다.
+    if (data.userId) {
+      localStorage.setItem("userId", data.userId);
+    }
     navigate("/main");
   };
 
