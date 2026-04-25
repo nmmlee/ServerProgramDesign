@@ -1,7 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import IngredientPanel from '@/components/IngredientPanel';
 import ChatPanel from '@/components/ChatPanel';
 import { AUTH_TOKEN_STORAGE_KEY, getUserId } from '@/lib/ingredientsApi';
+import {
+    deleteRecipe,
+    fetchRecipes,
+    saveRecipe,
+    updateRecipe,
+} from '@/lib/recipesApi';
 import { LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -35,29 +41,79 @@ const MainPage = () => {
     // 저장된 레시피 메시지 목록
     const [savedMessages, setSavedMessages] = useState<SavedMessage[]>([]);
 
-    const handleToggleSave = (id: string, title: string, content: string) => {
-        setSavedMessages((prev) => {
-            const exists = prev.find((m) => m.id === id);
-            if (exists) return prev.filter((m) => m.id !== id);
-            return [
-                ...prev,
-                { id, title, content, savedAt: new Date().toISOString() },
-            ];
-        });
+    const handleToggleSave = useCallback(
+        async (
+            id: string,
+            title: string,
+            content: string,
+        ): Promise<string | void> => {
+            const userId = getUserId();
+            if (!userId) {
+                navigate('/', { replace: true });
+                return;
+            }
+            const exists = savedMessages.find((m) => m.id === id);
+            try {
+                if (exists) {
+                    await deleteRecipe(id);
+                    setSavedMessages((prev) =>
+                        prev.filter((m) => m.id !== id),
+                    );
+                    return;
+                }
+                const row = await saveRecipe({
+                    userId,
+                    title: title.trim() || '제목 없음',
+                    content: content.trim(),
+                });
+                setSavedMessages((prev) => [
+                    ...prev,
+                    {
+                        id: row.id,
+                        title: row.title,
+                        content: row.content,
+                        savedAt: row.savedAt,
+                    },
+                ]);
+                return row.id;
+            } catch {
+                console.error('레시피 저장/삭제에 실패했습니다.');
+            }
+        },
+        [navigate, savedMessages],
+    );
+
+    const handleRemoveSavedMessage = async (id: string) => {
+        try {
+            await deleteRecipe(id);
+            setSavedMessages((prev) => prev.filter((m) => m.id !== id));
+        } catch {
+            console.error('레시피 삭제에 실패했습니다.');
+        }
     };
 
-    const handleRemoveSavedMessage = (id: string) => {
-        setSavedMessages((prev) => prev.filter((m) => m.id !== id));
-    };
-
-    const handleEditSavedMessage = (
+    const handleEditSavedMessage = async (
         id: string,
         title: string,
         content: string,
     ) => {
-        setSavedMessages((prev) =>
-            prev.map((m) => (m.id === id ? { ...m, title, content } : m)),
-        );
+        try {
+            const row = await updateRecipe(id, { title, content });
+            setSavedMessages((prev) =>
+                prev.map((m) =>
+                    m.id === id
+                        ? {
+                              ...m,
+                              title: row.title,
+                              content: row.content,
+                              savedAt: row.savedAt,
+                          }
+                        : m,
+                ),
+            );
+        } catch {
+            console.error('레시피 수정에 실패했습니다.');
+        }
     };
 
     const savedMessageIds = new Set(savedMessages.map((m) => m.id));
@@ -78,6 +134,17 @@ const MainPage = () => {
         return () => clearInterval(interval);
     }, []);
 
+    const loadSavedRecipes = useCallback(async () => {
+        const userId = getUserId();
+        if (!userId) return;
+        try {
+            const list = await fetchRecipes(userId);
+            setSavedMessages(list);
+        } catch {
+            console.error('저장 레시피 목록을 불러오지 못했습니다.');
+        }
+    }, []);
+
     // 사용자 Id가 없으면 로그인 페이지로 이동(Token이 없는 경우 메인페이지 접근 불가)
     useEffect(() => {
         const userId = getUserId();
@@ -86,7 +153,6 @@ const MainPage = () => {
             return;
         }
 
-        // [BE 통신] - Ingredients Get API 호출
         const fetchIngredients = async () => {
             const res = await fetch(
                 `/api/ingredients?userId=${encodeURIComponent(userId)}`,
@@ -96,7 +162,8 @@ const MainPage = () => {
         };
 
         fetchIngredients();
-    }, [navigate]);
+        loadSavedRecipes();
+    }, [navigate, loadSavedRecipes]);
 
     // [BE 통신] - Ingredients Add API 호출
     const addIngredient = async (ingredient: Omit<Ingredient, 'id'>) => {
@@ -209,6 +276,7 @@ const MainPage = () => {
                 <button
                     onClick={() => {
                         localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+                        localStorage.removeItem('userId');
                         navigate('/');
                     }}
                     className="btn-press flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted lg:gap-1.5 lg:px-4 lg:py-2 lg:text-base"
@@ -240,6 +308,7 @@ const MainPage = () => {
                             ingredients={ingredients}
                             savedMessageIds={savedMessageIds}
                             onToggleSave={handleToggleSave}
+                            onRecipeCreated={loadSavedRecipes}
                         />
                     </div>
                 </div>

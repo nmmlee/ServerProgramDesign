@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Send, Sparkles, Bookmark } from "lucide-react";
 import type { Ingredient } from "@/pages/MainPage";
+import { getUserId } from "@/lib/ingredientsApi";
 
 interface Message {
   id: string;
@@ -12,10 +13,20 @@ interface Message {
 interface Props {
   ingredients: Ingredient[];
   savedMessageIds: Set<string>;
-  onToggleSave: (id: string, title: string, content: string) => void;
+  onToggleSave: (
+    id: string,
+    title: string,
+    content: string,
+  ) => void | Promise<string | void>;
+  onRecipeCreated?: () => void;
 }
 
-const ChatPanel = ({ ingredients, savedMessageIds, onToggleSave }: Props) => {
+const ChatPanel = ({
+  ingredients,
+  savedMessageIds,
+  onToggleSave,
+  onRecipeCreated,
+}: Props) => {
   const [messages, setMessages] = useState<Message[]>([
     { id: "welcome", role: "assistant", content: "안녕하세요! 🍳 냉장고에 있는 재료로 레시피를 추천해드릴게요." },
   ]);
@@ -26,32 +37,45 @@ const ChatPanel = ({ ingredients, savedMessageIds, onToggleSave }: Props) => {
   const fetchRecipe = async (userMessage?: string) => {
     setIsLoading(true);
     try {
-      // URL 쿼리 파라미터에서 userId 추출 (?userId=...)
-     const currentUserId = localStorage.getItem("userId");
+      const currentUserId = getUserId() ?? localStorage.getItem("userId");
 
       if (!currentUserId) {
         alert("사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.");
         return;
       }
 
-      const response = await fetch("http://localhost:3000/api/recipes/generate", {
+      if (!ingredients.length) {
+        alert("냉장고에 등록된 재료가 있어야 레시피를 생성할 수 있어요.");
+        return;
+      }
+
+      const response = await fetch("/api/recipes/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: currentUserId,
-          ingredients: ingredients.map(i => i.name),
+          ingredients: ingredients.map((i) => i.name),
           message: userMessage,
         }),
       });
 
       const data = await response.json();
       if (data.success) {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: "assistant",
-          title: data.title,
-          content: data.content
-        }]);
+        const recipeId = String(
+          data.id ?? data.data?._id ?? data.data?.id ?? Date.now(),
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: recipeId,
+            role: "assistant",
+            title: data.title,
+            content: data.content,
+          },
+        ]);
+        onRecipeCreated?.();
+      } else {
+        alert(data.message ?? "레시피 생성에 실패했습니다.");
       }
     } catch (error) {
       console.error("Error:", error);
@@ -85,22 +109,60 @@ const ChatPanel = ({ ingredients, savedMessageIds, onToggleSave }: Props) => {
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages.map((msg) => (
-          <div 
-            key={msg.id} 
-            className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+          <div
+            key={msg.id}
+            className={`flex items-end gap-2 ${
+              msg.role === "user" ? "justify-end" : "justify-start"
+            }`}
             onMouseEnter={() => setHoveredId(msg.id)}
             onMouseLeave={() => setHoveredId(null)}
           >
-            <div className={`max-w-[80%] rounded-2xl p-4 text-sm shadow-sm ${msg.role === "user" ? "bg-secondary" : "bg-card"}`}>
-              {msg.title && <div className="mb-2 text-base font-bold text-primary">🍳 {msg.title}</div>}
-              <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+            <div
+              className={`max-w-[80%] rounded-2xl p-4 text-sm shadow-sm ${
+                msg.role === "user" ? "bg-secondary" : "bg-card"
+              }`}
+            >
+              {msg.title && (
+                <div className="mb-2 text-base font-bold text-primary">
+                  🍳 {msg.title}
+                </div>
+              )}
+              <div className="whitespace-pre-wrap leading-relaxed">
+                {msg.content}
+              </div>
             </div>
             {msg.role === "assistant" && msg.id !== "welcome" && (
-              <button 
-                onClick={() => onToggleSave(msg.id, msg.title || "", msg.content)}
-                className={`transition-opacity ${hoveredId === msg.id || savedMessageIds.has(msg.id) ? "opacity-100" : "opacity-0"}`}
+              <button
+                type="button"
+                onClick={async () => {
+                  const newId = await onToggleSave(
+                    msg.id,
+                    msg.title || "",
+                    msg.content,
+                  );
+                  if (newId) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === msg.id ? { ...m, id: newId } : m,
+                      ),
+                    );
+                  }
+                }}
+                className={`shrink-0 transition-opacity ${
+                  hoveredId === msg.id || savedMessageIds.has(msg.id)
+                    ? "opacity-100"
+                    : "max-sm:opacity-100 sm:opacity-0"
+                }`}
               >
-                <Bookmark size={20} className={savedMessageIds.has(msg.id) ? "text-primary" : "text-muted"} fill={savedMessageIds.has(msg.id) ? "currentColor" : "none"} />
+                <Bookmark
+                  size={20}
+                  className={
+                    savedMessageIds.has(msg.id)
+                      ? "text-primary"
+                      : "text-muted-foreground"
+                  }
+                  fill={savedMessageIds.has(msg.id) ? "currentColor" : "none"}
+                />
               </button>
             )}
           </div>
