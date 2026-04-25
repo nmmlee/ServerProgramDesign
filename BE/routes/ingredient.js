@@ -12,6 +12,7 @@ router.post('/', async (req, res) => {
             id: ingredient._id,
             name: ingredient.name,
             quantity: ingredient.quantity,
+            purchaseDate: ingredient.purchaseDate,
             expiry: ingredient.expiry,
         });
     } catch (err) {
@@ -30,6 +31,7 @@ router.get('/', async (req, res) => {
                 id: i._id,
                 name: i.name,
                 quantity: i.quantity,
+                purchaseDate: i.purchaseDate,
                 expiry: i.expiry,
             })),
         );
@@ -51,6 +53,7 @@ router.put('/:id', async (req, res) => {
             id: updated._id,
             name: updated.name,
             quantity: updated.quantity,
+            purchaseDate: updated.purchaseDate,
             expiry: updated.expiry,
         });
     } catch (err) {
