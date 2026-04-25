@@ -8,7 +8,8 @@ export type Ingredient = {
   id: string;
   name: string;
   quantity: number;
-  expiry: string;
+  purchaseDate: string; // YYYY-MM-DD
+  expiry: string;       // YYYY-MM-DD
 };
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
@@ -43,12 +44,14 @@ function normalizeIngredient(raw: {
   id: unknown;
   name: string;
   quantity: number;
+  purchaseDate?: string;
   expiry: string;
 }): Ingredient {
   return {
     id: String(raw.id),
     name: raw.name,
     quantity: Number(raw.quantity),
+    purchaseDate: raw.purchaseDate ?? "",
     expiry: raw.expiry,
   };
 }
@@ -68,6 +71,7 @@ export async function fetchIngredients(userId: string): Promise<Ingredient[]> {
 export async function createIngredient(body: {
   name: string;
   quantity: number;
+  purchaseDate: string;
   expiry: string;
   userId: string;
 }): Promise<Ingredient> {

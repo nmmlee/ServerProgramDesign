@@ -5,12 +5,13 @@ import { AUTH_TOKEN_STORAGE_KEY, getUserId } from '@/lib/ingredientsApi';
 import { LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-// 재료 데이터 구조: id는 Date.now()로 생성, expiry는 YYYY-MM-DD 형식
+// 재료 데이터 구조: purchaseDate·expiry 모두 YYYY-MM-DD 형식
 export interface Ingredient {
     id: string;
     name: string;
     quantity: number;
-    expiry: string; // YYYY-MM-DD
+    purchaseDate: string; // YYYY-MM-DD
+    expiry: string;       // YYYY-MM-DD
 }
 
 // 저장된 AI 레시피 메시지 구조
@@ -138,6 +139,7 @@ const MainPage = () => {
                           ...i,
                           name: data.name,
                           quantity: Number(data.quantity),
+                          purchaseDate: data.purchaseDate ?? i.purchaseDate,
                           expiry: data.expiry,
                       }
                     : i,

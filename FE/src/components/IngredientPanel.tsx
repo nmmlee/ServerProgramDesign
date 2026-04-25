@@ -45,12 +45,30 @@ const getExpiryStyle = (days: number) => {
   return "bg-muted text-muted-foreground";
 };
 
-/** 소비기한 값을 <input type="date">용 YYYY-MM-DD로 맞춤 */
-const toDateInputValue = (expiry: string): string => {
-  if (/^\d{4}-\d{2}-\d{2}/.test(expiry)) return expiry.slice(0, 10);
-  const d = new Date(expiry);
+/** YYYY-MM-DD 문자열 → <input type="date"> 값으로 맞춤 */
+const toDateInputValue = (date: string): string => {
+  if (/^\d{4}-\d{2}-\d{2}/.test(date)) return date.slice(0, 10);
+  const d = new Date(date);
   if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  return expiry.slice(0, 10);
+  return date.slice(0, 10);
+};
+
+/** 오늘 날짜를 YYYY-MM-DD 형식으로 반환 */
+const todayStr = (): string => {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+};
+
+/** YYYY-MM-DD → YY.MM.DD 짧은 형식 (카드 서브텍스트용) */
+const toShortDate = (date: string): string => {
+  if (!date) return "-";
+  const parts = date.slice(0, 10).split("-");
+  if (parts.length !== 3) return date.slice(0, 10);
+  return `${parts[0].slice(2)}.${parts[1]}.${parts[2]}`;
 };
 
 // 재료 관리 패널: 냉장고 재료 추가·삭제 + 저장된 레시피 탭
@@ -58,6 +76,7 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
   const [activeTab, setActiveTab] = useState<Tab>("fridge");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState(todayStr);
   const [expiry, setExpiry] = useState("");
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,6 +88,7 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
   const [ingredientEditName, setIngredientEditName] = useState("");
   const [ingredientEditQuantity, setIngredientEditQuantity] = useState("");
+  const [ingredientEditPurchaseDate, setIngredientEditPurchaseDate] = useState("");
   const [ingredientEditExpiry, setIngredientEditExpiry] = useState("");
   const [ingredientEditError, setIngredientEditError] = useState("");
 
@@ -77,6 +97,7 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
     setEditingIngredientId(item.id);
     setIngredientEditName(item.name);
     setIngredientEditQuantity(String(item.quantity));
+    setIngredientEditPurchaseDate(toDateInputValue(item.purchaseDate || todayStr()));
     setIngredientEditExpiry(toDateInputValue(item.expiry));
   };
 
@@ -95,6 +116,10 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
       setIngredientEditError("개수를 올바르게 입력해주세요.");
       return;
     }
+    if (!ingredientEditPurchaseDate) {
+      setIngredientEditError("입고날짜를 선택해주세요.");
+      return;
+    }
     if (!ingredientEditExpiry) {
       setIngredientEditError("소비기한을 선택해주세요.");
       return;
@@ -103,6 +128,7 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
       await onUpdate(id, {
         name: ingredientEditName.trim(),
         quantity: parseInt(ingredientEditQuantity, 10),
+        purchaseDate: ingredientEditPurchaseDate,
         expiry: ingredientEditExpiry,
       });
       setEditingIngredientId(null);
@@ -134,10 +160,12 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
     setError("");
     if (!name.trim()) { setError("재료명을 입력해주세요."); return; }
     if (!quantity || parseInt(quantity) <= 0) { setError("개수를 올바르게 입력해주세요."); return; }
+    if (!purchaseDate) { setError("입고날짜를 선택해주세요."); return; }
     if (!expiry) { setError("소비기한(연도-월-일)을 선택해주세요."); return; }
-    onAdd({ name: name.trim(), quantity: parseInt(quantity), expiry });
+    onAdd({ name: name.trim(), quantity: parseInt(quantity), purchaseDate, expiry });
     setName("");
     setQuantity("");
+    setPurchaseDate(todayStr());
     setExpiry("");
   };
 
@@ -198,35 +226,55 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
       {/* ── 내 냉장고 탭 ── */}
       {activeTab === "fridge" && (
         <>
-          {/* 재료 추가 폼: 재료명·개수·소비기한을 한 줄로 입력 */}
-          <form onSubmit={handleAdd} className="mb-3 flex gap-2 lg:mb-4 lg:gap-3">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="재료명"
-              className="h-12 w-full min-w-0 flex-1 rounded-xl border border-input bg-card px-4 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            {/* font-number: index.css에 정의된 숫자 전용 폰트(Quicksand) 클래스 */}
-            <input
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder="개수"
-              type="number"
-              min="1"
-              className="h-12 w-20 rounded-xl border border-input bg-card px-3 text-center font-number text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            <input
-              value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
-              type="date"
-              className="h-12 rounded-xl border border-input bg-card px-3 font-number text-base text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            <button
-              type="submit"
-              className="btn-press flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow hover:opacity-90"
-            >
-              <Plus className="h-6 w-6" />
-            </button>
+          {/* 재료 추가 폼: 2행 레이아웃 (모바일·데스크탑 공통) */}
+          <form onSubmit={handleAdd} className="mb-3 flex flex-col gap-2 lg:mb-4 lg:gap-2.5">
+            {/* 1행: 재료명 + 개수 */}
+            <div className="flex gap-2 lg:gap-3">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="재료명"
+                className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-card px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:h-12 lg:text-base"
+              />
+              {/* font-number: index.css에 정의된 숫자 전용 폰트(Quicksand) 클래스 */}
+              <input
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                placeholder="개수"
+                type="number"
+                min="1"
+                className="h-11 w-16 rounded-xl border border-input bg-card px-2 text-center font-number text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:h-12 lg:w-20 lg:text-base"
+              />
+            </div>
+            {/* 2행: 입고날짜 + 소비기한 + 추가 버튼 */}
+            <div className="flex gap-2 lg:gap-3">
+              <div className="flex flex-1 flex-col gap-0.5">
+                <span className="pl-1 text-xs text-muted-foreground">입고날짜</span>
+                <input
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  type="date"
+                  className="h-11 w-full rounded-xl border border-input bg-card px-3 font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:h-12 lg:text-base"
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-0.5">
+                <span className="pl-1 text-xs text-muted-foreground">소비기한</span>
+                <input
+                  value={expiry}
+                  onChange={(e) => setExpiry(e.target.value)}
+                  type="date"
+                  className="h-11 w-full rounded-xl border border-input bg-card px-3 font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:h-12 lg:text-base"
+                />
+              </div>
+              <div className="flex flex-col justify-end">
+                <button
+                  type="submit"
+                  className="btn-press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow hover:opacity-90 lg:h-12 lg:w-12"
+                >
+                  <Plus className="h-5 w-5 lg:h-6 lg:w-6" />
+                </button>
+              </div>
+            </div>
           </form>
 
           {/* 입력값 오류 메시지 (유효성 검사 실패 시만 표시) */}
@@ -249,27 +297,44 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
                     key={item.id}
                     className="rounded-2xl border border-primary/30 bg-card p-3 shadow-sm lg:p-4"
                   >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                      <input
-                        value={ingredientEditName}
-                        onChange={(e) => setIngredientEditName(e.target.value)}
-                        placeholder="재료명"
-                        className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-base"
-                      />
-                      <input
-                        value={ingredientEditQuantity}
-                        onChange={(e) => setIngredientEditQuantity(e.target.value)}
-                        type="number"
-                        min={1}
-                        placeholder="개수"
-                        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-center font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:w-24 lg:text-base"
-                      />
-                      <input
-                        value={ingredientEditExpiry}
-                        onChange={(e) => setIngredientEditExpiry(e.target.value)}
-                        type="date"
-                        className="h-11 rounded-xl border border-input bg-background px-3 font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-base"
-                      />
+                    {/* 편집 폼: 1행 재료명+개수, 2행 입고날짜+소비기한 */}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <input
+                          value={ingredientEditName}
+                          onChange={(e) => setIngredientEditName(e.target.value)}
+                          placeholder="재료명"
+                          className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-base"
+                        />
+                        <input
+                          value={ingredientEditQuantity}
+                          onChange={(e) => setIngredientEditQuantity(e.target.value)}
+                          type="number"
+                          min={1}
+                          placeholder="개수"
+                          className="h-11 w-16 rounded-xl border border-input bg-background px-2 text-center font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:w-20 lg:text-base"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex flex-1 flex-col gap-0.5">
+                          <span className="pl-1 text-xs text-muted-foreground">입고날짜</span>
+                          <input
+                            value={ingredientEditPurchaseDate}
+                            onChange={(e) => setIngredientEditPurchaseDate(e.target.value)}
+                            type="date"
+                            className="h-11 w-full rounded-xl border border-input bg-background px-3 font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-base"
+                          />
+                        </div>
+                        <div className="flex flex-1 flex-col gap-0.5">
+                          <span className="pl-1 text-xs text-muted-foreground">소비기한</span>
+                          <input
+                            value={ingredientEditExpiry}
+                            onChange={(e) => setIngredientEditExpiry(e.target.value)}
+                            type="date"
+                            className="h-11 w-full rounded-xl border border-input bg-background px-3 font-number text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring lg:text-base"
+                          />
+                        </div>
+                      </div>
                     </div>
                     {ingredientEditError && (
                       <p className="mt-2 text-xs font-medium text-destructive lg:text-sm">{ingredientEditError}</p>
@@ -299,35 +364,44 @@ const IngredientPanel = ({ ingredients, onAdd, onUpdate, onRemove, savedMessages
               return (
                 <div
                   key={item.id}
-                  className="flex items-center gap-2 rounded-2xl bg-card p-3 shadow-sm lg:gap-3 lg:p-4"
+                  className="rounded-2xl bg-card p-3 shadow-sm lg:p-4"
                 >
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-semibold text-foreground lg:text-base">{item.name}</span>
+                  {/* 1행: 재료명 + 개수 + D-day + 편집·삭제 */}
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground lg:text-base">
+                      {item.name}
+                    </span>
+                    <span className="shrink-0 font-number text-sm font-bold text-foreground lg:text-base">
+                      {item.quantity}개
+                    </span>
+                    <span
+                      className={`w-14 shrink-0 rounded-full py-0.5 text-center font-number text-xs font-semibold lg:w-16 lg:text-sm ${getExpiryStyle(days)}`}
+                    >
+                      {days <= 0 ? "만료됨" : `D-${days}`}
+                    </span>
+                    <button
+                      type="button"
+                      title="편집"
+                      onClick={() => startIngredientEdit(item)}
+                      className="btn-press shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary lg:p-2"
+                    >
+                      <Pencil className="h-4 w-4 lg:h-5 lg:w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="삭제"
+                      onClick={() => onRemove(item.id)}
+                      className="btn-press shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive lg:p-2"
+                    >
+                      <Trash2 className="h-4 w-4 lg:h-5 lg:w-5" />
+                    </button>
                   </div>
-                  <span className="shrink-0 font-number text-sm font-bold text-foreground lg:text-base">
-                    {item.quantity}개
-                  </span>
-                  <span
-                    className={`w-14 shrink-0 rounded-full py-0.5 text-center font-number text-xs font-semibold lg:w-16 lg:text-sm ${getExpiryStyle(days)}`}
-                  >
-                    {days <= 0 ? "만료됨" : `D-${days}`}
-                  </span>
-                  <button
-                    type="button"
-                    title="편집"
-                    onClick={() => startIngredientEdit(item)}
-                    className="btn-press shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary lg:p-2"
-                  >
-                    <Pencil className="h-4 w-4 lg:h-5 lg:w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    title="삭제"
-                    onClick={() => onRemove(item.id)}
-                    className="btn-press shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive lg:p-2"
-                  >
-                    <Trash2 className="h-4 w-4 lg:h-5 lg:w-5" />
-                  </button>
+                  {/* 2행: 입고날짜·소비기한 서브텍스트 */}
+                  <div className="mt-1 flex gap-3 font-number text-xs text-muted-foreground lg:text-sm">
+                    <span>입고 {toShortDate(item.purchaseDate)}</span>
+                    <span>·</span>
+                    <span>만료 {toShortDate(item.expiry)}</span>
+                  </div>
                 </div>
               );
             })}
