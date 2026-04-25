@@ -34,7 +34,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/ingredients', ingredientRouter);
-app.use('/api/recipes', recipeRouter);
+// Vite 프록시가 /api → 제거하므로 클라이언트는 /api/recipes, 서버는 /recipes
+app.use('/recipes', recipeRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

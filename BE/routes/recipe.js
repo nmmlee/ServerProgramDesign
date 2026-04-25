@@ -8,6 +8,87 @@ const Chat = require('../models/chat');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// 사용자별 저장 레시피 목록
+router.get('/', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId가 필요합니다.' });
+    }
+    const list = await Recipe.find({ userId }).sort({ createdAt: -1 }).lean();
+    res.json(
+      list.map((doc) => ({
+        id: String(doc._id),
+        title: doc.title,
+        content: doc.content,
+        savedAt: doc.savedAt || (doc.createdAt ? new Date(doc.createdAt).toISOString() : ''),
+      })),
+    );
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 채팅에서 북마크 등 수동 저장
+router.post('/', async (req, res) => {
+  try {
+    const { userId, title, content } = req.body;
+    if (!userId || !title || !content) {
+      return res.status(400).json({ success: false, message: 'userId, title, content가 필요합니다.' });
+    }
+    const savedAt = new Date().toISOString();
+    const doc = new Recipe({
+      userId,
+      title: String(title).trim(),
+      content: String(content).trim(),
+      savedAt,
+    });
+    await doc.save();
+    res.status(201).json({
+      id: String(doc._id),
+      title: doc.title,
+      content: doc.content,
+      savedAt: doc.savedAt,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.put('/:id', async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    const updated = await Recipe.findByIdAndUpdate(
+      req.params.id,
+      { title, content },
+      { new: true, runValidators: true },
+    );
+    if (!updated) {
+      return res.status(404).json({ success: false, message: '레시피를 찾을 수 없습니다.' });
+    }
+    res.json({
+      id: String(updated._id),
+      title: updated.title,
+      content: updated.content,
+      savedAt: updated.savedAt,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    const deleted = await Recipe.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: '레시피를 찾을 수 없습니다.' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.post('/generate', async (req, res) => {
   try {
     const { userId, ingredients, message } = req.body;
@@ -99,11 +180,12 @@ router.post('/generate', async (req, res) => {
     });
 
     // 4. 프론트엔드로 데이터 전송
-    res.status(200).json({ 
-      success: true, 
-      title: recipeData.title, 
+    res.status(200).json({
+      success: true,
+      id: String(savedRecipe._id),
+      title: recipeData.title,
       content: recipeData.content,
-      data: savedRecipe 
+      data: savedRecipe,
     });
 
   } catch (error) {
